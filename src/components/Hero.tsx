@@ -1,3 +1,4 @@
+import ZoomImage from './ZoomImage';
 import { ArrowUpRight } from 'lucide-react';
 
 export default function Hero() {
@@ -21,7 +22,7 @@ export default function Hero() {
           </div>
         </div>
         <figure className="max-w-md w-full mx-auto">
-          <img src="/images/41039b0caf784ea1.jpg" alt="Demeter’in dükkânında hazırlanan pembe kutulu beyaz gül aranjmanı"
+          <ZoomImage src="/images/41039b0caf784ea1.jpg" alt="Demeter’in dükkânında hazırlanan pembe kutulu beyaz gül aranjmanı"
             width="518" height="640" loading="eager" className="w-full rounded-t-[10rem] rounded-b-3xl" />
           <figcaption className="mt-4 text-sm text-sage-600 text-center">Demeter’den bir dokunuş.</figcaption>
         </figure>

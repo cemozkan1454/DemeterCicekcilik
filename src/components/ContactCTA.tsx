@@ -14,6 +14,7 @@ export default function ContactCTA() {
           <address className="not-italic flex gap-3 leading-relaxed"><MapPin size={22} className="shrink-0 mt-1 text-sage-200" aria-hidden="true" />{siteConfig.address}</address>
           <a href={siteConfig.phoneHref} className="inline-flex items-center gap-3 text-xl"><Phone size={20} aria-hidden="true" />{siteConfig.phone}</a>
           <div className="flex flex-wrap gap-3">
+            <a href={siteConfig.mapsHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-cream-50 text-sage-800 px-5 py-3 hover:bg-white"><MapPin size={18} aria-hidden="true" />Yol Tarifi Al</a>
             <a href={siteConfig.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full bg-cream-50 text-sage-800 px-5 py-3 hover:bg-white"><MessageCircle size={18} aria-hidden="true" />WhatsApp’tan Ulaşın</a>
             <a href={siteConfig.instagram} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-sage-300 px-5 py-3 hover:bg-sage-700"><Instagram size={18} aria-hidden="true" />Instagram</a>
           </div>

@@ -5,8 +5,8 @@ import BrandLogo from './BrandLogo';
 
 const navLinks = [
   { href: '#hakkimizda', label: 'Hakkımızda' },
-  { href: '#ciceklerimiz', label: 'Hizmetlerimiz' },
   { href: '#galeri', label: 'Galeri' },
+  { href: '#ciceklerimiz', label: 'Hizmetlerimiz' },
   { href: '#demeterin-hikayesi', label: 'Demeter’in Hikâyesi' },
   { href: '#iletisim', label: 'İletişim' },
 ];

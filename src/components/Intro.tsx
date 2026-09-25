@@ -4,7 +4,7 @@ export default function Intro() {
   const ref = useReveal<HTMLDivElement>();
 
   return (
-    <section id="hakkimizda" className="py-24 sm:py-32 bg-cream-50">
+    <section id="hakkimizda" className="py-14 sm:py-20 bg-cream-50">
       <div ref={ref} className="reveal max-w-3xl mx-auto px-5 sm:px-8 text-center">
         <p className="text-sage-500 text-sm tracking-widest-2 uppercase mb-5">
           Demeter Çiçekçilik
