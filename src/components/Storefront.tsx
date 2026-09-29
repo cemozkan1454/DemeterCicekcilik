@@ -16,7 +16,7 @@ export default function Storefront() {
           <p className="mt-5 text-charcoal-700 leading-relaxed">Buketlerimizi, saksı çiçeklerimizi ve hediyeliklerimizi görmek için Aşağısoku Mahallesi’ndeki dükkânımıza bekliyoruz.</p>
           <address className="not-italic mt-6 flex gap-3 text-sage-700 leading-relaxed"><MapPin className="shrink-0 mt-1" size={20} aria-hidden="true" />{siteConfig.address}</address>
           <a href={siteConfig.phoneHref} className="mt-5 inline-flex items-center gap-3 text-xl text-sage-800"><Phone size={20} aria-hidden="true" />{siteConfig.phone}</a>
-          <p className="mt-5 flex items-center gap-3 text-sage-700"><Clock size={20} aria-hidden="true" />Pazartesi–Cumartesi · 09.00–17.00</p>
+          <p className="mt-5 flex items-center gap-3 text-sage-700"><Clock size={20} aria-hidden="true" />{siteConfig.openingHoursLabel}</p>
           <div className="flex flex-wrap gap-3 mt-6">
             <a href={siteConfig.whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-sage-300 px-5 py-3 text-sage-800 hover:bg-sage-100"><MessageCircle size={18} aria-hidden="true" />WhatsApp</a>
             <a href={siteConfig.instagram} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-sage-300 px-5 py-3 text-sage-800 hover:bg-sage-100"><Instagram size={18} aria-hidden="true" />Instagram</a>

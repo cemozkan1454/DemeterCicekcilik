@@ -1,9 +1,10 @@
 # Yayın öncesi tamamlanacak bilgiler
 
-- Kullanıcının verdiği Pazartesi–Cumartesi 09.00–17.00 saatleri gösteriliyor. Pazar günü belirtilmedi; işletmeyle son teyit yapılabilir.
+- Kullanıcı her gün (Pazar dahil) 09.00–23.00 saatlerini teyit etti. Görünen saatler ve Florist yapılandırılmış verisi güncellendi.
 - Kullanıcının sağladığı Google Maps bağlantısı dükkân/iletişim bölümüne ve mobil çubuğa eklendi.
 - Adresteki 7B/8 kapı bilgisi yayın öncesinde teyit edilmeli.
-- Gerçek alan adı belirlendiğinde index.html dosyasına canonical, og:url ve mutlak paylaşım görseli URL’si eklenmeli; sitemap.xml oluşturulup robots.txt üzerinden belirtilmeli. Eski örnek alan adı kaldırıldı.
+- https://demetercicekcilik.com.tr/ ana adres olarak teyit edildi. Canonical, paylaşım etiketleri, dış cephe paylaşım görseli ve sitemap.xml eklendi; robots.txt site haritasını belirtiyor.
+- Yayından sonra Search Console alan adı doğrulaması yapılmalı, sitemap.xml gönderilmeli ve URL Denetimi ile ana sayfa kontrol edilmeli. Cloudflare tarafında www ve pages.dev alternatiflerinin ana adrese yönlendirmesi ayrıca kontrol edilmeli.
 - Gizlilik/KVKK metinleri işletmenin gerçek veri işleme süreçlerine göre hazırlanmalı. İçeriği olmayan eski bağlantılar kaldırıldı.
 - Telefon numarası WhatsApp bağlantısında da kullanılıyor; işletmenin bu numaradan WhatsApp kullandığı teyit edilmeli.
 - Fotoğraflar işletmenin Instagram profilinden alınmıştır; orijinaller geldiğinde yüksek çözünürlüklü sürümleriyle değiştirilebilir.
