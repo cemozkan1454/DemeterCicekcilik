@@ -240,8 +240,40 @@
     padding: 64px 12px 24px;
   }
   .image-dialog-photo {
-    max-height: 72dvh;
+    max-height: calc(100dvh - 230px - env(safe-area-inset-bottom));
   }
+}
+.collection-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 16px;
+}
+.collection-photo-grid-single { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) {
+  .collection-photo-grid { grid-template-columns: none; grid-template-rows: repeat(2, auto); grid-auto-flow: column; grid-auto-columns: calc((100% - 24px) / 2); gap: 28px 24px; }
+  .collection-photo-grid-single { grid-template-rows: auto; }
+  .collection-photo-grid > figure { grid-column: var(--tablet-column); grid-row: var(--tablet-row); }
+}
+.collection-rail-controls { display: none; }
+@media (min-width: 640px) and (max-width: 767px) {
+  .collection-rail-controls[data-count-over-four="true"] { display: flex; }
+}
+@media (min-width: 768px) {
+  .collection-rail-controls[data-count-over-six="true"] { display: flex; }
+}
+@media (max-width: 639px) {
+  #gallery-collection { padding: 18px 12px; border-radius: 20px; }
+  .collection-photo-grid figcaption { font-size: 16px; line-height: 1.35; margin-top: 10px; }
+  .collection-photo-grid .image-preview-hint { right: 6px; bottom: 6px; padding: 5px 7px; font-size: 10px; gap: 4px; }
+  .collection-photo-grid .image-preview-hint svg { width: 12px; height: 12px; }
+  .botanical-vine { width: 44px; opacity: 0.09; }
+}
+@media (min-width: 768px) {
+  .collection-photo-grid { grid-auto-columns: calc((100% - 48px) / 3); }
+  .collection-photo-grid > figure { grid-column: var(--desktop-column); grid-row: var(--desktop-row); }
 }
 .footer-shell {
   position: relative;
@@ -349,17 +381,17 @@
 .footer-botanical {
   position: absolute;
   z-index: 1;
-  bottom: -32px;
-  width: 190px;
+  bottom: 18px;
+  width: clamp(72px, 8vw, 130px);
   color: #9caf91;
-  opacity: 0.52;
+  opacity: 0.32;
   pointer-events: none;
 }
 .footer-botanical-left {
-  left: -28px;
+  left: 16px;
 }
 .footer-botanical-right {
-  right: -28px;
+  right: 16px;
   transform: scaleX(-1);
 }
 @media (max-width: 767px) {
@@ -392,7 +424,8 @@
     margin-top: 30px;
   }
   .footer-botanical {
-    width: 145px;
-    opacity: 0.34;
+    width: 64px;
+    bottom: 70px;
+    opacity: 0.16;
   }
 }

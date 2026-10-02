@@ -3,25 +3,23 @@ import { siteConfig } from '@/config/site';
 import BrandLogo from './BrandLogo';
 
 const footerLinks = [
-  { href: '#galeri', label: 'Galeri' },
-  { href: '#ciceklerimiz', label: 'Hizmetlerimiz' },
+  { href: '#galeri', label: 'Çiçeklerimiz & Hizmetlerimiz' },
   { href: '#demeterin-hikayesi', label: 'Hikâyemiz' },
+  { href: '#iletisim', label: 'Dükkânımız' },
 ];
 
 function CornerBotanical({ side }: { side: 'left' | 'right' }) {
   return (
     <svg viewBox="0 0 220 250" className={`footer-botanical footer-botanical-${side}`} aria-hidden="true">
       <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M8 246C42 204 37 162 77 127C111 97 96 49 144 5" strokeWidth="1.5" />
-        {[[35,207,-36],[49,174,24],[70,140,-32],[87,109,28],[105,74,-30],[128,34,20]].map(([x,y,rotation], index) => (
-          <g key={index} transform={`translate(${x} ${y}) rotate(${rotation})`}>
-            <path d="M0 0C6-18 22-27 40-23C39-5 24 8 0 0Z" fill="currentColor" fillOpacity=".12" />
-            <path d="M2-1C15-8 26-15 38-21" strokeWidth="1" strokeOpacity=".7" />
-          </g>
-        ))}
-        <g transform="translate(78 126)" stroke="#e8c4bc" strokeWidth="1">
-          {[0,1,2,3,4].map((index) => <ellipse key={index} cy="-11" rx="5" ry="11" transform={`rotate(${index * 72})`} fill="#e8c4bc" fillOpacity=".22" />)}
-          <circle r="4" fill="#d4bb81" fillOpacity=".65" />
+        <path d="M34 235C48 178 103 110 162 27" strokeWidth="1.4" />
+        <g fill="currentColor" fillOpacity=".09" strokeWidth="1.2">
+          <path d="M49 192C17 179 15 153 23 134C47 147 57 169 49 192Z" />
+          <path d="M49 192C72 160 99 161 115 168C97 192 73 200 49 192Z" />
+          <path d="M83 135C53 126 50 101 58 80C82 95 88 112 83 135Z" />
+          <path d="M83 135C104 110 128 108 148 118C128 138 108 145 83 135Z" />
+          <path d="M119 86C100 70 101 48 112 33C127 50 130 67 119 86Z" />
+          <path d="M119 86C138 62 159 60 177 69C160 89 139 94 119 86Z" />
         </g>
       </g>
     </svg>
