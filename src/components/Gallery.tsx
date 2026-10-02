@@ -40,9 +40,9 @@ export default function Gallery() {
         <div ref={categoryGrid} className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 scroll-mt-28" aria-label="Tasarım kategorileri">
           {galleryCategories.map((item) => {
             const selected = panelOpen && item.id === selectedId;
-            const Icon = item.id === 'arac-susleme' ? Car : item.id === 'evlenme-teklifi' ? Heart : Flower2;
+            const Icon = item.id === 'arac-susleme' ? Car : item.id === 'isteme-ve-teklif' ? Heart : Flower2;
             return <button ref={(element) => { categoryButtons.current[item.id] = element; }} key={item.id} type="button" onClick={() => selectCategory(item.id)} aria-pressed={selected} aria-expanded={selected} aria-controls="gallery-collection" className={`group text-left rounded-2xl overflow-hidden border shadow-sm transition-colors ${selected ? 'border-sage-700 bg-sage-700 text-white' : 'border-cream-300 bg-white text-sage-800 hover:border-sage-400'}`}>
-              <div className="aspect-[5/4] overflow-hidden bg-cream-100">{item.photos.length > 0 ? <img src={item.photos[0].src} alt="" loading="lazy" decoding="async" className={`w-full h-full transition-transform duration-300 motion-safe:group-hover:scale-105 ${item.contain ? 'object-contain p-2' : 'object-cover'}`} /> : <div className="h-full flex items-center justify-center bg-gradient-to-br from-cream-100 to-sage-100"><Icon size={48} strokeWidth={1} className="text-sage-500" aria-hidden="true" /></div>}</div>
+              <div className="aspect-[5/4] overflow-hidden bg-cream-100">{item.photos.length > 0 ? <img src={item.photos[item.coverIndex ?? 0].src} style={{ objectPosition: item.coverPosition ?? "center" }} alt="" loading="lazy" decoding="async" className={`w-full h-full transition-transform duration-300 motion-safe:group-hover:scale-105 ${item.contain ? 'object-contain p-2' : 'object-cover'}`} /> : <div className="h-full flex items-center justify-center bg-gradient-to-br from-cream-100 to-sage-100"><Icon size={48} strokeWidth={1} className="text-sage-500" aria-hidden="true" /></div>}</div>
               <div className="px-4 py-4 flex items-center justify-between gap-2"><span className="font-serif text-lg sm:text-xl">{item.title}</span><ArrowUpRight size={18} className="shrink-0" aria-hidden="true" /></div>
             </button>;
           })}

@@ -81,6 +81,7 @@
     left: -18px;
   }
   .botanical-right {
+    display: none;
     right: -18px;
     transform: scaleX(-1);
   }
@@ -97,13 +98,20 @@
   }
   @media (max-width: 767px) {
     .botanical-left {
-      left: -12px;
+      left: -6px;
+      transform: scale(0.42);
+      transform-origin: left top;
     }
     .botanical-right {
-      right: -12px;
+      display: block;
+      left: calc(100% + 6px);
+      right: auto;
+      transform: scale(-0.42, 0.42);
+      transform-origin: left top;
     }
     .botanical-vine {
-      opacity: 0.12;
+      height: calc(100% / 0.42);
+      opacity: 0.25;
     }
   }
   @media (min-width: 768px) and (max-width: 1399px) {
@@ -154,6 +162,32 @@
   height: 100%;
   cursor: zoom-in;
   text-align: inherit;
+}
+.floral-nav-link { position: relative; z-index: 10; }
+.floral-nav-link[aria-current="location"] { color: #658356; }
+.floral-nav-mobile { padding-left: 40px; }
+.nav-butterfly {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 34px;
+  height: 29px;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 20;
+  filter: drop-shadow(0 2px 2px rgb(70 53 42 / .1));
+}
+.butterfly-wing { transform-box: view-box; transform-origin: 24px 21px; animation: butterfly-rest 4.8s ease-in-out infinite; }
+.butterfly-wing-right { animation-delay: -.06s; }
+.nav-butterfly.is-flying .butterfly-wing-left { animation: butterfly-flight-left .28s ease-in-out infinite; }
+.nav-butterfly.is-flying .butterfly-wing-right { animation: butterfly-flight-right .28s ease-in-out -.025s infinite; }
+@keyframes butterfly-rest { 0%, 68%, 100% { transform: perspective(100px) rotateY(12deg); } 78% { transform: perspective(100px) rotateY(48deg); } 88% { transform: perspective(100px) rotateY(18deg); } }
+@keyframes butterfly-flight-left { 0%, 100% { transform: perspective(100px) rotateY(-12deg); } 42% { transform: perspective(100px) rotateY(-72deg); } 70% { transform: perspective(100px) rotateY(-28deg); } }
+@keyframes butterfly-flight-right { 0%, 100% { transform: perspective(100px) rotateY(12deg); } 42% { transform: perspective(100px) rotateY(72deg); } 70% { transform: perspective(100px) rotateY(28deg); } }
+.botanical-desktop-detail { display: none; }
+@media (min-width: 768px) {
+  .botanical-desktop-detail { display: inline; }
+  .botanical-vine { opacity: 0.65; }
 }
 .image-preview-hint {
   position: absolute;
@@ -269,7 +303,6 @@
   .collection-photo-grid figcaption { font-size: 16px; line-height: 1.35; margin-top: 10px; }
   .collection-photo-grid .image-preview-hint { right: 6px; bottom: 6px; padding: 5px 7px; font-size: 10px; gap: 4px; }
   .collection-photo-grid .image-preview-hint svg { width: 12px; height: 12px; }
-  .botanical-vine { width: 44px; opacity: 0.09; }
 }
 @media (min-width: 768px) {
   .collection-photo-grid { grid-auto-columns: calc((100% - 48px) / 3); }
