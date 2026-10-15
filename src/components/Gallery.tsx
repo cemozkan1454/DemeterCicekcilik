@@ -1,17 +1,31 @@
-import { useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowUp, ArrowUpRight, ChevronLeft, ChevronRight, Car, Flower2, Heart, Instagram, MessageCircle } from 'lucide-react';
 import ZoomImage from './ZoomImage';
 import { galleryCategories } from '@/config/gallery';
 import { siteConfig } from '@/config/site';
+import { fetchGalleryRows, rowsToCategories } from '@/lib/galleryRepository';
+import { supabaseConfigured } from '@/lib/supabase';
 
 export default function Gallery() {
+  const [categories, setCategories] = useState(galleryCategories);
   const [selectedId, setSelectedId] = useState(galleryCategories[0].id);
   const [panelOpen, setPanelOpen] = useState(true);
   const panel = useRef<HTMLDivElement>(null);
   const categoryGrid = useRef<HTMLDivElement>(null);
   const photoRail = useRef<HTMLDivElement>(null);
   const categoryButtons = useRef<Record<string, HTMLButtonElement | null>>({});
-  const category = galleryCategories.find((item) => item.id === selectedId)!;
+  const category = categories.find((item) => item.id === selectedId) ?? categories[0];
+
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    let active = true;
+    fetchGalleryRows().then(rows => {
+      if (active && rows.length > 0) setCategories(rowsToCategories(rows));
+    }).catch(() => {
+      // Statik galeri bağlantı sorunu olduğunda görünmeye devam eder.
+    });
+    return () => { active = false; };
+  }, []);
   function selectCategory(id: string) {
     setSelectedId(id);
     setPanelOpen(true);
@@ -38,7 +52,7 @@ export default function Gallery() {
           <a href={siteConfig.instagram} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-sage-700 text-white rounded-full px-6 py-3.5 mt-5 text-sm hover:bg-sage-800 shrink-0"><Instagram size={19} aria-hidden="true" /> Instagram’da Bizi Takip Edin <ArrowUpRight size={16} aria-hidden="true" /></a>
         </div>
         <div ref={categoryGrid} className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 scroll-mt-28" aria-label="Tasarım kategorileri">
-          {galleryCategories.map((item) => {
+          {categories.map((item) => {
             const selected = panelOpen && item.id === selectedId;
             const Icon = item.id === 'arac-susleme' ? Car : item.id === 'isteme-ve-teklif' ? Heart : Flower2;
             return <button ref={(element) => { categoryButtons.current[item.id] = element; }} key={item.id} type="button" onClick={() => selectCategory(item.id)} aria-pressed={selected} aria-expanded={selected} aria-controls="gallery-collection" className={`group text-left rounded-2xl overflow-hidden border shadow-sm transition-colors ${selected ? 'border-sage-700 bg-sage-700 text-white' : 'border-cream-300 bg-white text-sage-800 hover:border-sage-400'}`}>

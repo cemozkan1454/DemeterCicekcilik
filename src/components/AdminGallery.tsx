@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Check, Eye, EyeOff, ImagePlus, Images, Loader2, LockKeyhole, LogOut, Star, Trash2, X } from 'lucide-react';
 import { galleryCategories } from '@/config/gallery';
+import { fetchGalleryRows, photoUrl, seedStaticGalleryIfEmpty } from '@/lib/galleryRepository';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import './AdminGallery.css';
 
 const LIMIT = 50;
 const MAX_INPUT = 20 * 1024 * 1024;
 const MAX_OUTPUT = 500 * 1024;
-const SESSION_KEY = 'demeter-admin-session';
-type Photo = { id: string; src: string; caption: string; bytes?: number };
+type Photo = { id: string; src: string; caption: string; bytes?: number; storagePath?: string | null };
 type Category = { id: string; title: string; photos: Photo[]; coverId: string | null; contain: boolean };
-type Prepared = Photo & { originalBytes: number };
+type Prepared = Photo & { originalBytes: number; blob: Blob };
 const formatSize = (bytes: number) => bytes >= 1024 * 1024
   ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   : `${Math.ceil(bytes / 1024)} KB`;
@@ -18,6 +19,7 @@ function initialCategories(): Category[] {
   return galleryCategories.map(category => {
     const photos = category.photos.map((photo, index) => ({
       id: `${category.id}-${index}`, src: photo.src, caption: photo.caption,
+      storagePath: null,
     }));
     return {
       id: category.id, title: category.title, photos,
@@ -61,7 +63,7 @@ async function optimizePhoto(file: File): Promise<Prepared> {
     return {
       id: crypto.randomUUID(), src: URL.createObjectURL(blob),
       caption: file.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' '),
-      bytes: blob.size, originalBytes: file.size,
+      bytes: blob.size, originalBytes: file.size, blob,
     };
   } finally {
     URL.revokeObjectURL(url);
@@ -69,7 +71,8 @@ async function optimizePhoto(file: File): Promise<Prepared> {
 }
 
 export default function AdminGallery() {
-  const [authenticated, setAuthenticated] = useState(() => sessionStorage.getItem(SESSION_KEY) === 'active');
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -91,27 +94,64 @@ export default function AdminGallery() {
   const total = categories.reduce((sum, item) => sum + item.photos.length, 0);
   const modalOpen = Boolean(removing || preview);
 
-  function login(event: FormEvent<HTMLFormElement>) {
+  async function loadGallery() {
+    if (!supabase) return;
+    await seedStaticGalleryIfEmpty();
+    const rows = await fetchGalleryRows();
+    setCategories(galleryCategories.map(categoryInfo => {
+      const categoryRows = rows.filter(row => row.category_id === categoryInfo.id);
+      return {
+        id: categoryInfo.id,
+        title: categoryInfo.title,
+        contain: Boolean(categoryInfo.contain),
+        coverId: categoryRows.find(row => row.is_cover)?.id ?? categoryRows[0]?.id ?? null,
+        photos: categoryRows.map(row => ({
+          id: row.id,
+          src: photoUrl(row),
+          caption: row.caption,
+          storagePath: row.storage_path,
+        })),
+      };
+    }));
+  }
+
+  useEffect(() => {
+    if (!supabase) { setAuthChecking(false); return; }
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthenticated(Boolean(data.session));
+      setAuthChecking(false);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthenticated(Boolean(session));
+      setAuthChecking(false);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    setBusy(true);
+    loadGallery()
+      .catch(error => setErrors([error instanceof Error ? error.message : 'Galeri yüklenemedi.']))
+      .finally(() => setBusy(false));
+  }, [authenticated]);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const configuredUsername = import.meta.env.VITE_ADMIN_USERNAME;
-    const configuredPassword = import.meta.env.VITE_ADMIN_PASSWORD;
-    if (!configuredUsername || !configuredPassword) {
-      setLoginError('Giriş bilgileri henüz yapılandırılmadı. Site yöneticinizle iletişime geçin.');
+    if (!supabase) {
+      setLoginError('Supabase bağlantısı henüz yapılandırılmadı.');
       return;
     }
-    if (username.trim() !== configuredUsername || password !== configuredPassword) {
-      setLoginError('Kullanıcı adı veya şifre hatalı. Bilgilerinizi kontrol edip tekrar deneyin.');
-      return;
-    }
-    sessionStorage.setItem(SESSION_KEY, 'active');
-    setAuthenticated(true);
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: username.trim(), password });
+    setBusy(false);
+    if (error) return setLoginError('E-posta veya şifre hatalı. Bilgilerinizi kontrol edip tekrar deneyin.');
     setPassword('');
     setLoginError('');
   }
 
-  function logout() {
-    sessionStorage.removeItem(SESSION_KEY);
-    setAuthenticated(false);
+  async function logout() {
+    await supabase?.auth.signOut();
     setUsername('');
     setPassword('');
   }
@@ -184,28 +224,82 @@ export default function AdminGallery() {
     setBusy(false);
   }
 
-  function addPhotos() {
+  async function addPhotos() {
     if (!pending.length || busy) return;
     if (category.photos.length + pending.length > LIMIT) return;
-    const count = pending.length;
-    setCategories(previous => previous.map(item => item.id === selectedId ? {
-      ...item, photos: [...item.photos, ...pending], coverId: item.coverId ?? pending[0].id,
-    } : item));
-    setPending([]);
-    setMessage(`${count} fotoğraf önizlemeye eklendi. Canlı siteye kaydedilmedi.`);
+    if (!supabase) return;
+    setBusy(true);
+    setErrors([]);
+    const uploadedPaths: string[] = [];
+    try {
+      const startPosition = category.photos.length;
+      for (const [index, photo] of pending.entries()) {
+        const path = `${selectedId}/${crypto.randomUUID()}.webp`;
+        const { error: uploadError } = await supabase.storage.from('gallery').upload(path, photo.blob, { contentType: 'image/webp' });
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(path);
+        const { error: insertError } = await supabase.from('gallery_photos').insert({
+          category_id: selectedId,
+          storage_path: path,
+          caption: photo.caption || 'Demeter çiçek tasarımı',
+          position: startPosition + index,
+          is_cover: !category.coverId && index === 0,
+        });
+        if (insertError) throw insertError;
+      }
+      const count = pending.length;
+      pending.forEach(photo => revoke(photo.src));
+      setPending([]);
+      await loadGallery();
+      setMessage(`${count} fotoğraf yüklendi ve ana galeriye eklendi.`);
+    } catch (error) {
+      if (uploadedPaths.length) await supabase.storage.from('gallery').remove(uploadedPaths);
+      setErrors([error instanceof Error ? error.message : 'Fotoğraflar yüklenemedi.']);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function removePhoto() {
+  async function removePhoto() {
     if (!removing) return;
+    if (!supabase) return;
     const removed = removing;
-    setCategories(previous => previous.map(item => {
-      if (item.id !== selectedId) return item;
-      const photos = item.photos.filter(photo => photo.id !== removed.id);
-      return { ...item, photos, coverId: item.coverId === removed.id ? photos[0]?.id ?? null : item.coverId };
-    }));
-    revoke(removed.src);
-    setRemoving(null);
-    setMessage('Fotoğraf önizlemeden kaldırıldı. Canlı sitedeki fotoğraf değişmedi.');
+    setBusy(true);
+    setErrors([]);
+    try {
+      const wasCover = category.coverId === removed.id;
+      const nextPhoto = category.photos.find(photo => photo.id !== removed.id);
+      const { error } = await supabase.from('gallery_photos').delete().eq('id', removed.id);
+      if (error) throw error;
+      if (removed.storagePath) {
+        const { error: storageError } = await supabase.storage.from('gallery').remove([removed.storagePath]);
+        if (storageError) throw storageError;
+      }
+      if (wasCover && nextPhoto) {
+        const { error: coverError } = await supabase.rpc('set_gallery_cover', { photo_id: nextPhoto.id, selected_category: selectedId });
+        if (coverError) throw coverError;
+      }
+      setRemoving(null);
+      await loadGallery();
+      setMessage('Fotoğraf ana galeriden kaldırıldı.');
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : 'Fotoğraf kaldırılamadı.']);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setCover(photo: Photo) {
+    if (!supabase || busy || photo.id === category.coverId) return;
+    setBusy(true);
+    setErrors([]);
+    const { error } = await supabase.rpc('set_gallery_cover', { photo_id: photo.id, selected_category: selectedId });
+    if (error) setErrors([error.message]);
+    else {
+      await loadGallery();
+      setMessage('Kategori kapağı değiştirildi.');
+    }
+    setBusy(false);
   }
 
   function changeCategory(id: string) {
@@ -218,6 +312,10 @@ export default function AdminGallery() {
     setSelectedId(id);
   }
 
+  if (authChecking) {
+    return <div className="ag-login-page"><p role="status">Yönetim paneli açılıyor…</p></div>;
+  }
+
   if (!authenticated) {
     return <div className="ag-login-page">
       <a className="ag-login-back" href="/"><ArrowLeft size={17} /> Siteye dön</a>
@@ -227,15 +325,15 @@ export default function AdminGallery() {
         <h1>Yönetim paneli</h1>
         <p>Galeri fotoğraflarını düzenlemek için giriş yapın.</p>
         <form onSubmit={login}>
-          <label htmlFor="admin-username">Kullanıcı adı</label>
-          <input id="admin-username" name="username" autoComplete="username" autoFocus value={username} onChange={event => { setUsername(event.target.value); setLoginError(''); }} required />
+          <label htmlFor="admin-username">E-posta adresi</label>
+          <input id="admin-username" name="username" type="email" inputMode="email" autoComplete="username" autoFocus value={username} onChange={event => { setUsername(event.target.value); setLoginError(''); }} required />
           <label htmlFor="admin-password">Şifre</label>
           <div className="ag-password-field">
             <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={password} onChange={event => { setPassword(event.target.value); setLoginError(''); }} required />
             <button type="button" aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button>
           </div>
           {loginError && <p className="ag-login-error" role="alert">{loginError}</p>}
-          <button className="ag-login-submit" type="submit">Giriş yap</button>
+          <button className="ag-login-submit" type="submit" disabled={busy}>{busy ? 'Giriş yapılıyor…' : 'Giriş yap'}</button>
         </form>
         <small>Bu panel yalnızca yetkili kullanıcılar içindir.</small>
       </main>
@@ -246,11 +344,11 @@ export default function AdminGallery() {
     <div className="ag-page">
       <header className="ag-header">
         <div><span className="ag-brand">DEMETER</span><span className="ag-header-label">Fotoğraf yönetimi</span></div>
-        <div className="ag-header-actions"><a href="/"><ArrowLeft size={17} /> Siteye dön</a><button type="button" onClick={logout}><LogOut size={17} /> Çıkış yap</button></div>
+        <div className="ag-header-actions"><a href="/"><ArrowLeft size={17} /> Siteye dön</a><button type="button" onClick={() => void logout()}><LogOut size={17} /> Çıkış yap</button></div>
       </header>
       <main className="ag-main">
         <div className="ag-intro"><div><h1>Galeri fotoğrafları</h1><p>Kategori seçin, fotoğraf ekleyin veya kaldırın.</p></div><span className="ag-total"><Images size={18} /> {total} fotoğraf · 7 kategori</span></div>
-        <div className="ag-demo" role="note"><strong>Tasarım önizlemesi</strong><span>Supabase henüz bağlı değil. İşlemler yalnızca bu ekranda denenir; sayfa yenilendiğinde sıfırlanır. Güvenli giriş ve canlıya kaydetme bağlantı kurulduğunda açılacak.</span></div>
+        {!supabaseConfigured && <div className="ag-demo" role="note"><strong>Bağlantı eksik</strong><span>Supabase ortam değişkenleri tanımlanmadığı için değişiklikler kaydedilemez.</span></div>}
         <div className="ag-layout">
           <aside className="ag-sidebar"><h2>1. Kategori seçin</h2><nav aria-label="Galeri kategorileri">
             {categories.map(item => {
@@ -281,8 +379,8 @@ export default function AdminGallery() {
                   <button type="button" aria-label={`${photo.caption} seçimini kaldır`} disabled={busy} onClick={() => { revoke(photo.src); setPending(previous => previous.filter(item => item.id !== photo.id)); }}><X size={17} /></button>
                   <span>{formatSize(photo.originalBytes)} → <strong>{formatSize(photo.bytes!)}</strong></span>
                 </div>)}</div>
-                <button className="ag-primary" type="button" disabled={busy} onClick={addPhotos}>{pending.length} fotoğrafı önizlemeye ekle</button>
-                <p className="ag-hint">Bu aşamada canlı siteye yükleme yapılmaz.</p>
+                <button className="ag-primary" type="button" disabled={busy} onClick={() => void addPhotos()}>{busy ? 'Yükleniyor…' : `${pending.length} fotoğrafı galeriye ekle`}</button>
+                <p className="ag-hint">Fotoğraflar kaydedildiğinde ana sitede görünür.</p>
               </div>}
             </div>
             <p className="ag-status" role="status" aria-live="polite">{message}</p>
@@ -293,10 +391,7 @@ export default function AdminGallery() {
                 {photo.id === category.coverId && <span className="ag-cover-badge"><Star size={13} fill="currentColor" /> Kapak</span>}
               </button>
               <div className="ag-photo-body"><p title={photo.caption}>{photo.caption || `Fotoğraf ${index + 1}`}</p>
-                <div className="ag-photo-actions"><button type="button" disabled={busy || photo.id === category.coverId} onClick={() => {
-                  setCategories(previous => previous.map(item => item.id === selectedId ? { ...item, coverId: photo.id } : item));
-                  setMessage('Kapak fotoğrafı önizlemede değiştirildi. Canlı siteye kaydedilmedi.');
-                }}><Star size={15} />{photo.id === category.coverId ? 'Kapak' : 'Kapak yap'}</button>
+                <div className="ag-photo-actions"><button type="button" disabled={busy || photo.id === category.coverId} onClick={() => void setCover(photo)}><Star size={15} />{photo.id === category.coverId ? 'Kapak' : 'Kapak yap'}</button>
                 <button type="button" className="ag-remove" disabled={busy} onClick={() => setRemoving(photo)}><Trash2 size={15} /> Kaldır</button></div>
               </div>
             </article>)}</div>
@@ -306,7 +401,7 @@ export default function AdminGallery() {
       </main>
       {modalOpen && <div className="ag-overlay" onClick={event => { if (event.target === event.currentTarget) { setRemoving(null); setPreview(null); } }}>
         <div className={preview ? 'ag-dialog ag-preview-dialog' : 'ag-dialog'} role="dialog" aria-modal="true" aria-labelledby="ag-dialog-title">
-          {removing ? <><h2 id="ag-dialog-title">Fotoğraf kaldırılsın mı?</h2><p>“{removing.caption}” seçili kategorinin önizlemesinden kaldırılacak.</p><p>Canlı site etkilenmez. Kategori kapağıysa kalan ilk fotoğraf kapak olur.</p><div className="ag-dialog-actions"><button ref={removeCancel} type="button" onClick={() => setRemoving(null)}>Vazgeç</button><button className="ag-danger" type="button" onClick={removePhoto}>Evet, kaldır</button></div></>
+          {removing ? <><h2 id="ag-dialog-title">Fotoğraf kaldırılsın mı?</h2><p>“{removing.caption}” seçili kategoriden ve ana siteden kaldırılacak.</p><p>Kategori kapağıysa kalan ilk fotoğraf kapak olur.</p><div className="ag-dialog-actions"><button ref={removeCancel} type="button" onClick={() => setRemoving(null)}>Vazgeç</button><button className="ag-danger" type="button" disabled={busy} onClick={() => void removePhoto()}>{busy ? 'Kaldırılıyor…' : 'Evet, kaldır'}</button></div></>
           : preview && <><div className="ag-preview-heading"><h2 id="ag-dialog-title">Fotoğraf önizlemesi</h2><button ref={removeCancel} type="button" aria-label="Önizlemeyi kapat" onClick={() => setPreview(null)}><X size={22} /></button></div><img src={preview.src} alt={preview.caption} /><p>{preview.caption}</p></>}
         </div>
       </div>}
