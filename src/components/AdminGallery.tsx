@@ -143,11 +143,27 @@ export default function AdminGallery() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: username.trim(), password });
-    setBusy(false);
-    if (error) return setLoginError('E-posta veya şifre hatalı. Bilgilerinizi kontrol edip tekrar deneyin.');
-    setPassword('');
     setLoginError('');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: username.trim(), password });
+      if (error) {
+        if (error.code === 'invalid_credentials') {
+          setLoginError('E-posta veya şifre bu Supabase projesindeki hesapla eşleşmiyor.');
+        } else if (error.code === 'email_not_confirmed') {
+          setLoginError('Hesabın e-posta adresi henüz doğrulanmamış.');
+        } else if (!error.status || error.name === 'AuthRetryableFetchError') {
+          setLoginError('Giriş sunucusuna ulaşılamıyor. İnternet bağlantısını ve Supabase proje adresini kontrol edin.');
+        } else {
+          setLoginError(`Giriş tamamlanamadı: ${error.message}`);
+        }
+        return;
+      }
+      setPassword('');
+    } catch {
+      setLoginError('Giriş sunucusuna bağlanılamadı. İnternet bağlantısını ve Supabase proje adresini kontrol edin.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function logout() {

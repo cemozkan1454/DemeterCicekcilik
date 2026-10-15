@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import AdminGallery from '@/components/AdminGallery';
 import BotanicalDecor from '@/components/BotanicalDecor';
 import Storefront from '@/components/Storefront';
 import SEO from '@/components/SEO';
@@ -10,11 +10,9 @@ import DemeterStory from '@/components/DemeterStory';
 import Footer from '@/components/Footer';
 import MobileContactBar from '@/components/MobileContactBar';
 
-const AdminGallery = lazy(() => import('@/components/AdminGallery'));
-
 function App() {
   if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
-    return <Suspense fallback={<p role="status" className="p-8">Fotoğraf yönetimi açılıyor…</p>}><AdminGallery /></Suspense>;
+    return <AdminGallery />;
   }
   return (
     <>
