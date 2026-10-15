@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, Check, Eye, EyeOff, ImagePlus, Images, Loader2, LockKeyhole, LogOut, Pencil, Star, Trash2, X } from 'lucide-react';
 import { galleryCategories } from '@/config/gallery';
 import { fetchGalleryRows, photoUrl, seedStaticGalleryIfEmpty } from '@/lib/galleryRepository';
-import { supabase, supabaseConfigured } from '@/lib/supabase';
+import { rememberSession, supabase, supabaseConfigured } from '@/lib/supabase';
 import './AdminGallery.css';
 
 const LIMIT = 20;
@@ -51,11 +51,17 @@ async function optimizePhoto(file: File): Promise<Prepared> {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Tarayıcınız fotoğraf işlemeyi desteklemiyor.');
     let blob: Blob | null = null;
+    let outputType = 'image/webp';
     for (let attempt = 0; attempt < 8; attempt++) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const quality = Math.max(0.5, 0.85 - attempt * 0.07);
-      blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', quality));
+      blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, outputType, quality));
+      if (blob && blob.type !== outputType) {
+        // Safari may return PNG when WebP encoding is unavailable.
+        outputType = 'image/jpeg';
+        blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, outputType, quality));
+      }
       if (!blob) throw new Error('Fotoğraf hazırlanamadı.');
       if (blob.size <= MAX_OUTPUT) break;
       if (attempt >= 3) {
@@ -64,6 +70,7 @@ async function optimizePhoto(file: File): Promise<Prepared> {
       }
     }
     if (!blob || blob.size > MAX_OUTPUT) throw new Error('Fotoğraf yeterince küçültülemedi. Başka bir fotoğraf seçin.');
+    if (file.size < blob.size && file.size <= MAX_OUTPUT && ratio === 1) blob = file;
     return {
       id: crypto.randomUUID(), src: URL.createObjectURL(blob),
       caption: file.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').trim().slice(0, 80) || 'Demeter çiçek tasarımı',
@@ -80,6 +87,7 @@ export default function AdminGallery() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [categories, setCategories] = useState(initialCategories);
   const [selectedId, setSelectedId] = useState(categories[0].id);
@@ -151,6 +159,7 @@ export default function AdminGallery() {
     setBusy(true);
     setLoginError('');
     try {
+      rememberSession(remember);
       const { error } = await supabase.auth.signInWithPassword({ email: username.trim(), password });
       if (error) {
         if (error.code === 'invalid_credentials') {
@@ -258,8 +267,9 @@ export default function AdminGallery() {
       const startPosition = category.photos.length;
       for (const [index, photo] of pending.entries()) {
         stage = 'Fotoğraf deposuna yükleme';
-        const path = `${selectedId}/${crypto.randomUUID()}.webp`;
-        const { error: uploadError } = await supabase.storage.from('gallery').upload(path, photo.blob, { contentType: 'image/webp' });
+        const extension = photo.blob.type === 'image/jpeg' ? 'jpg' : photo.blob.type === 'image/png' ? 'png' : 'webp';
+        const path = `${selectedId}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from('gallery').upload(path, photo.blob, { contentType: photo.blob.type });
         if (uploadError) throw uploadError;
         stage = 'Galeri kaydını oluşturma';
         const { error: insertError } = await supabase.from('gallery_photos').insert({
@@ -396,6 +406,7 @@ export default function AdminGallery() {
             <button type="button" aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button>
           </div>
           {loginError && <p className="ag-login-error" role="alert">{loginError}</p>}
+          <label className="ag-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /> Oturumumu açık tut</label>
           <button className="ag-login-submit" type="submit" disabled={busy}>{busy ? 'Giriş yapılıyor…' : 'Giriş yap'}</button>
         </form>
         <small>Bu panel yalnızca yetkili kullanıcılar içindir.</small>

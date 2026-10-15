@@ -87,9 +87,9 @@ revoke all on function public.set_gallery_cover(uuid, text) from public, anon;
 grant execute on function public.set_gallery_cover(uuid, text) to authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('gallery', 'gallery', true, 524288, array['image/webp'])
+values ('gallery', 'gallery', true, 524288, array['image/webp', 'image/jpeg', 'image/png'])
 on conflict (id) do update set public = true, file_size_limit = 524288,
-  allowed_mime_types = array['image/webp'];
+  allowed_mime_types = array['image/webp', 'image/jpeg', 'image/png'];
 
 drop policy if exists "Public gallery images are readable" on storage.objects;
 create policy "Public gallery images are readable"
