@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, Check, Eye, EyeOff, ImagePlus, Images, Loader2, LockKeyhole, LogOut, Star, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Check, Eye, EyeOff, ImagePlus, Images, Loader2, LockKeyhole, LogOut, Pencil, Star, Trash2, X } from 'lucide-react';
 import { galleryCategories } from '@/config/gallery';
 import { fetchGalleryRows, photoUrl, seedStaticGalleryIfEmpty } from '@/lib/galleryRepository';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import './AdminGallery.css';
 
-const LIMIT = 50;
+const LIMIT = 20;
 const MAX_INPUT = 20 * 1024 * 1024;
 const MAX_OUTPUT = 500 * 1024;
 function errorMessage(error: unknown, fallback: string): string {
@@ -89,6 +89,8 @@ export default function AdminGallery() {
   const [message, setMessage] = useState('');
   const [removing, setRemoving] = useState<Photo | null>(null);
   const [preview, setPreview] = useState<Photo | null>(null);
+  const [editing, setEditing] = useState<Photo | null>(null);
+  const [editedCaption, setEditedCaption] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const removeCancel = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -96,7 +98,7 @@ export default function AdminGallery() {
   const category = categories.find(item => item.id === selectedId)!;
   const remaining = LIMIT - category.photos.length - pending.length;
   const total = categories.reduce((sum, item) => sum + item.photos.length, 0);
-  const modalOpen = Boolean(removing || preview);
+  const modalOpen = Boolean(removing || preview || editing);
 
   async function loadGallery() {
     if (!supabase) return;
@@ -198,7 +200,7 @@ export default function AdminGallery() {
     document.body.style.overflow = 'hidden';
     removeCancel.current?.focus();
     function keydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') { setRemoving(null); setPreview(null); }
+      if (event.key === 'Escape') { setRemoving(null); setPreview(null); setEditing(null); }
       if (event.key === 'Tab') {
         const buttons = document.querySelectorAll<HTMLButtonElement>('.ag-dialog button');
         const first = buttons[0];
@@ -338,6 +340,31 @@ export default function AdminGallery() {
     setBusy(false);
   }
 
+  function openCaptionEditor(photo: Photo) {
+    setEditedCaption(photo.caption);
+    setEditing(photo);
+  }
+
+  async function updateCaption(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !editing || busy) return;
+    const caption = editedCaption.trim();
+    if (!caption) return;
+    setBusy(true);
+    setErrors([]);
+    try {
+      const { error } = await supabase.from('gallery_photos').update({ caption }).eq('id', editing.id);
+      if (error) throw error;
+      setEditing(null);
+      await loadGallery();
+      setMessage('Fotoğraf adı güncellendi ve ana siteye yansıtıldı.');
+    } catch (error) {
+      setErrors([errorMessage(error, 'Fotoğraf adı güncellenemedi.')]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function changeCategory(id: string) {
     if (id === selectedId || busy) return;
     if (pending.length && !window.confirm('Seçili fotoğraflar henüz eklenmedi. Seçimi bırakıp kategori değiştirmek istiyor musunuz?')) return;
@@ -395,7 +422,7 @@ export default function AdminGallery() {
                 {item.id === selectedId && <Check size={18} />}
               </button>;
             })}
-          </nav><p className="ag-side-note">Her kategoride en fazla 50 fotoğraf bulunabilir.</p></aside>
+          </nav><p className="ag-side-note">Her kategoride en fazla 20 fotoğraf bulunabilir.</p></aside>
           <section className="ag-content" aria-labelledby="ag-category-title">
             <div className="ag-section-heading"><div><h2 id="ag-category-title">{category.title}</h2><p>{category.photos.length} / {LIMIT} fotoğraf · {LIMIT - category.photos.length} boş yer</p></div></div>
             <div className="ag-upload">
@@ -413,6 +440,7 @@ export default function AdminGallery() {
                 <div className="ag-pending-grid">{pending.map(photo => <div key={photo.id} className="ag-pending-photo">
                   <img src={photo.src} alt={photo.caption} />
                   <button type="button" aria-label={`${photo.caption} seçimini kaldır`} disabled={busy} onClick={() => { revoke(photo.src); setPending(previous => previous.filter(item => item.id !== photo.id)); }}><X size={17} /></button>
+                  <label><span>Fotoğraf adı</span><input type="text" maxLength={80} value={photo.caption} disabled={busy} onChange={event => setPending(previous => previous.map(item => item.id === photo.id ? { ...item, caption: event.target.value } : item))} /></label>
                   <span>{formatSize(photo.originalBytes)} → <strong>{formatSize(photo.bytes!)}</strong></span>
                 </div>)}</div>
                 <button className="ag-primary" type="button" disabled={busy} onClick={() => void addPhotos()}>{busy ? 'Yükleniyor…' : `${pending.length} fotoğrafı galeriye ekle`}</button>
@@ -427,7 +455,8 @@ export default function AdminGallery() {
                 {photo.id === category.coverId && <span className="ag-cover-badge"><Star size={13} fill="currentColor" /> Kapak</span>}
               </button>
               <div className="ag-photo-body"><p title={photo.caption}>{photo.caption || `Fotoğraf ${index + 1}`}</p>
-                <div className="ag-photo-actions"><button type="button" disabled={busy || photo.id === category.coverId} onClick={() => void setCover(photo)}><Star size={15} />{photo.id === category.coverId ? 'Kapak' : 'Kapak yap'}</button>
+                <div className="ag-photo-actions"><button type="button" disabled={busy} onClick={() => openCaptionEditor(photo)}><Pencil size={15} /> Adını düzenle</button>
+                <button type="button" disabled={busy || photo.id === category.coverId} onClick={() => void setCover(photo)}><Star size={15} />{photo.id === category.coverId ? 'Kapak' : 'Kapak yap'}</button>
                 <button type="button" className="ag-remove" disabled={busy} onClick={() => setRemoving(photo)}><Trash2 size={15} /> Kaldır</button></div>
               </div>
             </article>)}</div>
@@ -435,9 +464,10 @@ export default function AdminGallery() {
           </section>
         </div>
       </main>
-      {modalOpen && <div className="ag-overlay" onClick={event => { if (event.target === event.currentTarget) { setRemoving(null); setPreview(null); } }}>
+      {modalOpen && <div className="ag-overlay" onClick={event => { if (event.target === event.currentTarget) { setRemoving(null); setPreview(null); setEditing(null); } }}>
         <div className={preview ? 'ag-dialog ag-preview-dialog' : 'ag-dialog'} role="dialog" aria-modal="true" aria-labelledby="ag-dialog-title">
           {removing ? <><h2 id="ag-dialog-title">Fotoğraf kaldırılsın mı?</h2><p>“{removing.caption}” seçili kategoriden ve ana siteden kaldırılacak.</p><p>Kategori kapağıysa kalan ilk fotoğraf kapak olur.</p><div className="ag-dialog-actions"><button ref={removeCancel} type="button" onClick={() => setRemoving(null)}>Vazgeç</button><button className="ag-danger" type="button" disabled={busy} onClick={() => void removePhoto()}>{busy ? 'Kaldırılıyor…' : 'Evet, kaldır'}</button></div></>
+          : editing ? <form className="ag-edit-form" onSubmit={updateCaption}><h2 id="ag-dialog-title">Fotoğraf adını düzenle</h2><p>Bu ad fotoğrafın altında ana sitede de görünecek.</p><label htmlFor="ag-photo-name">Fotoğraf adı</label><input id="ag-photo-name" type="text" maxLength={80} value={editedCaption} onChange={event => setEditedCaption(event.target.value)} disabled={busy} autoFocus required /><small>{editedCaption.trim().length} / 80 karakter</small><div className="ag-dialog-actions"><button ref={removeCancel} type="button" onClick={() => setEditing(null)}>Vazgeç</button><button className="ag-save" type="submit" disabled={busy || !editedCaption.trim()}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button></div></form>
           : preview && <><div className="ag-preview-heading"><h2 id="ag-dialog-title">Fotoğraf önizlemesi</h2><button ref={removeCancel} type="button" aria-label="Önizlemeyi kapat" onClick={() => setPreview(null)}><X size={22} /></button></div><img src={preview.src} alt={preview.caption} /><p>{preview.caption}</p></>}
         </div>
       </div>}
