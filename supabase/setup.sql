@@ -37,6 +37,9 @@ create unique index if not exists gallery_one_cover_per_category
   on public.gallery_photos (category_id) where is_cover;
 
 alter table public.gallery_photos enable row level security;
+grant usage on schema public to anon, authenticated;
+grant select on public.gallery_photos to anon, authenticated;
+grant insert, update, delete on public.gallery_photos to authenticated;
 
 drop policy if exists "Gallery is publicly readable" on public.gallery_photos;
 create policy "Gallery is publicly readable"

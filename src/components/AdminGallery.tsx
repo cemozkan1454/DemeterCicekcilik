@@ -8,6 +8,10 @@ import './AdminGallery.css';
 const LIMIT = 50;
 const MAX_INPUT = 20 * 1024 * 1024;
 const MAX_OUTPUT = 500 * 1024;
+function errorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') return error.message;
+  return fallback;
+}
 type Photo = { id: string; src: string; caption: string; bytes?: number; storagePath?: string | null };
 type Category = { id: string; title: string; photos: Photo[]; coverId: string | null; contain: boolean };
 type Prepared = Photo & { originalBytes: number; blob: Blob };
@@ -246,14 +250,16 @@ export default function AdminGallery() {
     if (!supabase) return;
     setBusy(true);
     setErrors([]);
-    const uploadedPaths: string[] = [];
+    const savedIds = new Set<string>();
+    let stage = 'Fotoğraf yükleme';
     try {
       const startPosition = category.photos.length;
       for (const [index, photo] of pending.entries()) {
+        stage = 'Fotoğraf deposuna yükleme';
         const path = `${selectedId}/${crypto.randomUUID()}.webp`;
         const { error: uploadError } = await supabase.storage.from('gallery').upload(path, photo.blob, { contentType: 'image/webp' });
         if (uploadError) throw uploadError;
-        uploadedPaths.push(path);
+        stage = 'Galeri kaydını oluşturma';
         const { error: insertError } = await supabase.from('gallery_photos').insert({
           category_id: selectedId,
           storage_path: path,
@@ -261,16 +267,30 @@ export default function AdminGallery() {
           position: startPosition + index,
           is_cover: !category.coverId && index === 0,
         });
-        if (insertError) throw insertError;
+        if (insertError) {
+          // Yalnızca bu denemede yüklenen ve kaydı oluşturulamayan dosyayı temizle.
+          const { error: cleanupError } = await supabase.storage.from('gallery').remove([path]);
+          if (cleanupError) throw new Error(`${errorMessage(insertError, 'Kayıt oluşturulamadı.')} Yüklenen dosya temizlenemedi: ${cleanupError.message}`);
+          throw insertError;
+        }
+        savedIds.add(photo.id);
       }
       const count = pending.length;
       pending.forEach(photo => revoke(photo.src));
       setPending([]);
+      stage = 'Kaydedilen fotoğrafları görüntüleme';
       await loadGallery();
       setMessage(`${count} fotoğraf yüklendi ve ana galeriye eklendi.`);
     } catch (error) {
-      if (uploadedPaths.length) await supabase.storage.from('gallery').remove(uploadedPaths);
-      setErrors([error instanceof Error ? error.message : 'Fotoğraflar yüklenemedi.']);
+      pending.filter(photo => savedIds.has(photo.id)).forEach(photo => revoke(photo.src));
+      setPending(previous => previous.filter(photo => !savedIds.has(photo.id)));
+      setErrors([`${stage}: ${errorMessage(error, 'İşlem tamamlanamadı.')}`]);
+      if (savedIds.size) {
+        setMessage(`${savedIds.size} fotoğraf kaydedildi. Kalan fotoğrafları tekrar deneyebilirsiniz.`);
+        try { await loadGallery(); } catch (refreshError) {
+          setErrors(previous => [...previous, errorMessage(refreshError, 'Galeri yenilenemedi.')]);
+        }
+      }
     } finally {
       setBusy(false);
     }
