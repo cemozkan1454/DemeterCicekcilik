@@ -66,7 +66,7 @@ async function optimizePhoto(file: File): Promise<Prepared> {
     if (!blob || blob.size > MAX_OUTPUT) throw new Error('Fotoğraf yeterince küçültülemedi. Başka bir fotoğraf seçin.');
     return {
       id: crypto.randomUUID(), src: URL.createObjectURL(blob),
-      caption: file.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' '),
+      caption: file.name.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ').trim().slice(0, 80) || 'Demeter çiçek tasarımı',
       bytes: blob.size, originalBytes: file.size, blob,
     };
   } finally {
@@ -265,7 +265,7 @@ export default function AdminGallery() {
         const { error: insertError } = await supabase.from('gallery_photos').insert({
           category_id: selectedId,
           storage_path: path,
-          caption: photo.caption || 'Demeter çiçek tasarımı',
+          caption: photo.caption.trim().slice(0, 80) || 'Demeter çiçek tasarımı',
           position: startPosition + index,
           is_cover: !category.coverId && index === 0,
         });

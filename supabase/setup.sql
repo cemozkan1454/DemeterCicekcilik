@@ -26,7 +26,7 @@ create table if not exists public.gallery_photos (
   )),
   source_url text,
   storage_path text unique,
-  caption text not null default 'Demeter çiçek tasarımı',
+  caption text not null default 'Demeter çiçek tasarımı' check (char_length(btrim(caption)) between 1 and 80),
   position integer not null default 0 check (position >= 0),
   is_cover boolean not null default false,
   created_at timestamptz not null default now(),
@@ -60,6 +60,10 @@ create policy "Authenticated users can delete gallery photos"
 create or replace function public.enforce_gallery_category_limit()
 returns trigger language plpgsql set search_path = public as $$
 begin
+  if TG_OP = 'UPDATE' then
+    if new.category_id = old.category_id then return new; end if;
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('gallery-category:' || new.category_id, 0));
   if (select count(*) from public.gallery_photos where category_id = new.category_id) >= 20 then
     raise exception 'Bu kategoride en fazla 20 fotoğraf bulunabilir.';
   end if;
@@ -68,7 +72,7 @@ end;
 $$;
 
 drop trigger if exists gallery_category_limit on public.gallery_photos;
-create trigger gallery_category_limit before insert on public.gallery_photos
+create trigger gallery_category_limit before insert or update of category_id on public.gallery_photos
 for each row execute function public.enforce_gallery_category_limit();
 
 create or replace function public.set_gallery_cover(photo_id uuid, selected_category text)
@@ -79,6 +83,7 @@ begin
   update public.gallery_photos set is_cover = true where id = photo_id and category_id = selected_category;
 end;
 $$;
+revoke all on function public.set_gallery_cover(uuid, text) from public, anon;
 grant execute on function public.set_gallery_cover(uuid, text) to authenticated;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
