@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { ArrowLeft, Check, Eye, EyeOff, ImagePlus, Images, Loader2, LockKeyhole, LogOut, Pencil, Star, Trash2, X } from 'lucide-react';
 import { galleryCategories } from '@/config/gallery';
 import { fetchGalleryRows, photoUrl, seedStaticGalleryIfEmpty } from '@/lib/galleryRepository';
@@ -131,15 +132,37 @@ export default function AdminGallery() {
 
   useEffect(() => {
     if (!supabase) { setAuthChecking(false); return; }
-    supabase.auth.getSession().then(({ data }) => {
-      setAuthenticated(Boolean(data.session));
-      setAuthChecking(false);
-    });
+    const client = supabase;
+    let active = true;
+    let revision = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function checkSession(session: Session | null) {
+      const current = ++revision;
+      clearTimeout(timer);
+      setAuthenticated(false);
+      if (!session) { setAuthChecking(false); return; }
+      setAuthChecking(true);
+      // Run outside the auth callback: Supabase holds its auth lock there.
+      timer = setTimeout(() => {
+        void (async () => {
+          try {
+            const { data: userData, error: userError } = await client.auth.getUser(session.access_token);
+            if (userError || !userData.user) throw new Error('Oturum doğrulanamadı. Lütfen tekrar giriş yapın.');
+            const { data: isAdmin, error: roleError } = await client.rpc('is_gallery_admin');
+            if (roleError || isAdmin !== true) throw new Error('Bu hesabın yönetim paneline erişim yetkisi yok.');
+            if (active && current === revision) { setAuthenticated(true); setLoginError(''); }
+          } catch (error) {
+            if (active && current === revision) setLoginError(errorMessage(error, 'Yetki doğrulanamadı. Lütfen tekrar giriş yapın.'));
+          } finally {
+            if (active && current === revision) setAuthChecking(false);
+          }
+        })();
+      }, 0);
+    }
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthenticated(Boolean(session));
-      setAuthChecking(false);
+      checkSession(session);
     });
-    return () => data.subscription.unsubscribe();
+    return () => { active = false; revision++; clearTimeout(timer); data.subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {

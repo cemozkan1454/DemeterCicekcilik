@@ -16,4 +16,7 @@ export default defineConfig({
   server: {
     hmr: false,
   },
+  build: {
+    target: ['chrome87', 'edge88', 'firefox78', 'safari14'],
+  },
 });
