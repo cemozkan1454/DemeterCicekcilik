@@ -43,22 +43,3 @@ export function rowsToCategories(rows: GalleryRow[]): GalleryCategory[] {
     };
   });
 }
-
-export async function seedStaticGalleryIfEmpty() {
-  if (!supabase) return;
-  const { count, error } = await supabase
-    .from('gallery_photos')
-    .select('id', { count: 'exact', head: true });
-  if (error) throw error;
-  if ((count ?? 0) > 0) return;
-
-  const rows = galleryCategories.flatMap(category => category.photos.map((photo, index) => ({
-    category_id: category.id,
-    source_url: photo.src,
-    caption: photo.caption,
-    position: index,
-    is_cover: index === (category.coverIndex ?? 0),
-  })));
-  const { error: insertError } = await supabase.from('gallery_photos').insert(rows);
-  if (insertError) throw insertError;
-}

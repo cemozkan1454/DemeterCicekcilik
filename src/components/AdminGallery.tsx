@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { ArrowLeft, Check, Eye, EyeOff, ImagePlus, Images, Loader2, LockKeyhole, LogOut, Pencil, Star, Trash2, X } from 'lucide-react';
 import { galleryCategories } from '@/config/gallery';
-import { fetchGalleryRows, photoUrl, seedStaticGalleryIfEmpty } from '@/lib/galleryRepository';
+import { fetchGalleryRows, photoUrl } from '@/lib/galleryRepository';
 import { rememberSession, supabase, supabaseConfigured } from '@/lib/supabase';
 import './AdminGallery.css';
 
@@ -13,7 +13,7 @@ function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') return error.message;
   return fallback;
 }
-type Photo = { id: string; src: string; caption: string; bytes?: number; storagePath?: string | null };
+type Photo = { id: string; src: string; caption: string; bytes?: number; storagePath?: string | null; position?: number };
 type Category = { id: string; title: string; photos: Photo[]; coverId: string | null; contain: boolean };
 type Prepared = Photo & { originalBytes: number; blob: Blob };
 const formatSize = (bytes: number) => bytes >= 1024 * 1024
@@ -21,17 +21,10 @@ const formatSize = (bytes: number) => bytes >= 1024 * 1024
   : `${Math.ceil(bytes / 1024)} KB`;
 
 function initialCategories(): Category[] {
-  return galleryCategories.map(category => {
-    const photos = category.photos.map((photo, index) => ({
-      id: `${category.id}-${index}`, src: photo.src, caption: photo.caption,
-      storagePath: null,
-    }));
-    return {
-      id: category.id, title: category.title, photos,
-      coverId: photos[category.coverIndex ?? 0]?.id ?? photos[0]?.id ?? null,
-      contain: Boolean(category.contain),
-    };
-  });
+  return galleryCategories.map(category => ({
+    id: category.id, title: category.title, photos: [], coverId: null,
+    contain: Boolean(category.contain),
+  }));
 }
 
 async function optimizePhoto(file: File): Promise<Prepared> {
@@ -91,6 +84,7 @@ export default function AdminGallery() {
   const [remember, setRemember] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [categories, setCategories] = useState(initialCategories);
+  const [galleryLoaded, setGalleryLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState(categories[0].id);
   const [pending, setPending] = useState<Prepared[]>([]);
   const [busy, setBusy] = useState(false);
@@ -100,6 +94,7 @@ export default function AdminGallery() {
   const [preview, setPreview] = useState<Photo | null>(null);
   const [editing, setEditing] = useState<Photo | null>(null);
   const [editedCaption, setEditedCaption] = useState('');
+  const [dialogError, setDialogError] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const removeCancel = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -111,7 +106,6 @@ export default function AdminGallery() {
 
   async function loadGallery() {
     if (!supabase) return;
-    await seedStaticGalleryIfEmpty();
     const rows = await fetchGalleryRows();
     setCategories(galleryCategories.map(categoryInfo => {
       const categoryRows = rows.filter(row => row.category_id === categoryInfo.id);
@@ -125,9 +119,11 @@ export default function AdminGallery() {
           src: photoUrl(row),
           caption: row.caption,
           storagePath: row.storage_path,
+          position: row.position,
         })),
       };
     }));
+    setGalleryLoaded(true);
   }
 
   useEffect(() => {
@@ -169,7 +165,7 @@ export default function AdminGallery() {
     if (!authenticated) return;
     setBusy(true);
     loadGallery()
-      .catch(error => setErrors([error instanceof Error ? error.message : 'Galeri yüklenemedi.']))
+      .catch(error => setErrors([errorMessage(error, 'Galeri yüklenemedi.')]))
       .finally(() => setBusy(false));
   }, [authenticated]);
 
@@ -205,9 +201,32 @@ export default function AdminGallery() {
   }
 
   async function logout() {
-    await supabase?.auth.signOut();
-    setUsername('');
-    setPassword('');
+    if (!supabase || busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      pending.forEach(photo => revoke(photo.src));
+      setPending([]);
+      setCategories(initialCategories());
+      setGalleryLoaded(false);
+      setUsername('');
+      setPassword('');
+      setErrors([]);
+      setMessage('');
+    } catch (error) {
+      setErrors([errorMessage(error, 'Çıkış yapılamadı. Tekrar deneyin.')]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryGallery() {
+    setBusy(true);
+    setErrors([]);
+    try { await loadGallery(); }
+    catch (error) { setErrors([errorMessage(error, 'Galeri yüklenemedi.')]); }
+    finally { setBusy(false); }
   }
 
   useEffect(() => {
@@ -230,11 +249,11 @@ export default function AdminGallery() {
     returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const oldOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    removeCancel.current?.focus();
+    document.querySelector<HTMLElement>('.ag-dialog input:not([disabled]), .ag-dialog button:not([disabled])')?.focus();
     function keydown(event: KeyboardEvent) {
       if (event.key === 'Escape') { setRemoving(null); setPreview(null); setEditing(null); }
       if (event.key === 'Tab') {
-        const buttons = document.querySelectorAll<HTMLButtonElement>('.ag-dialog button');
+        const buttons = document.querySelectorAll<HTMLElement>('.ag-dialog input:not([disabled]), .ag-dialog button:not([disabled])');
         const first = buttons[0];
         const last = buttons[buttons.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
@@ -254,7 +273,7 @@ export default function AdminGallery() {
   }
 
   async function prepare(files: FileList | null) {
-    if (!files?.length || busy) return;
+    if (!files?.length || busy || !galleryLoaded) return;
     if (files.length > remaining) {
       setErrors([`Bu kategoriye ${remaining} fotoğraf daha seçebilirsiniz. Seçiminizi azaltıp tekrar deneyin.`]);
       return;
@@ -287,7 +306,7 @@ export default function AdminGallery() {
     const savedIds = new Set<string>();
     let stage = 'Fotoğraf yükleme';
     try {
-      const startPosition = category.photos.length;
+      const startPosition = Math.max(-1, ...category.photos.map(photo => photo.position ?? 0)) + 1;
       for (const [index, photo] of pending.entries()) {
         stage = 'Fotoğraf deposuna yükleme';
         const extension = photo.blob.type === 'image/jpeg' ? 'jpg' : photo.blob.type === 'image/png' ? 'png' : 'webp';
@@ -332,29 +351,41 @@ export default function AdminGallery() {
   }
 
   async function removePhoto() {
-    if (!removing) return;
+    if (!removing || busy) return;
     if (!supabase) return;
     const removed = removing;
     setBusy(true);
     setErrors([]);
+    setDialogError('');
     try {
       const wasCover = category.coverId === removed.id;
       const nextPhoto = category.photos.find(photo => photo.id !== removed.id);
       const { error } = await supabase.from('gallery_photos').delete().eq('id', removed.id);
       if (error) throw error;
-      if (removed.storagePath) {
-        const { error: storageError } = await supabase.storage.from('gallery').remove([removed.storagePath]);
-        if (storageError) throw storageError;
-      }
+      // The database removal already succeeded; cleanup failures must not leave a stale card.
+      setRemoving(null);
+      setCategories(previous => previous.map(item => item.id === selectedId ? {
+        ...item, photos: item.photos.filter(photo => photo.id !== removed.id),
+        coverId: wasCover ? nextPhoto?.id ?? null : item.coverId,
+      } : item));
+      const warnings: string[] = [];
       if (wasCover && nextPhoto) {
         const { error: coverError } = await supabase.rpc('set_gallery_cover', { photo_id: nextPhoto.id, selected_category: selectedId });
-        if (coverError) throw coverError;
+        if (coverError) warnings.push(`Yeni kapak kaydedilemedi: ${coverError.message}`);
       }
-      setRemoving(null);
-      await loadGallery();
+      if (removed.storagePath) {
+        const { error: storageError } = await supabase.storage.from('gallery').remove([removed.storagePath]);
+        if (storageError) warnings.push(`Fotoğraf galeriden kaldırıldı, depo dosyası temizlenemedi: ${storageError.message}`);
+      }
+      try { await loadGallery(); } catch (refreshError) {
+        warnings.push(errorMessage(refreshError, 'Galeri yenilenemedi.'));
+      }
+      setErrors(warnings);
       setMessage('Fotoğraf ana galeriden kaldırıldı.');
     } catch (error) {
-      setErrors([error instanceof Error ? error.message : 'Fotoğraf kaldırılamadı.']);
+      const detail = errorMessage(error, 'Fotoğraf kaldırılamadı.');
+      setErrors([detail]);
+      setDialogError(detail);
     } finally {
       setBusy(false);
     }
@@ -364,16 +395,21 @@ export default function AdminGallery() {
     if (!supabase || busy || photo.id === category.coverId) return;
     setBusy(true);
     setErrors([]);
-    const { error } = await supabase.rpc('set_gallery_cover', { photo_id: photo.id, selected_category: selectedId });
-    if (error) setErrors([error.message]);
-    else {
+    try {
+      const { error } = await supabase.rpc('set_gallery_cover', { photo_id: photo.id, selected_category: selectedId });
+      if (error) throw error;
+      setCategories(previous => previous.map(item => item.id === selectedId ? { ...item, coverId: photo.id } : item));
       await loadGallery();
       setMessage('Kategori kapağı değiştirildi.');
+    } catch (error) {
+      setErrors([errorMessage(error, 'Kategori kapağı güncellenemedi.')]);
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   function openCaptionEditor(photo: Photo) {
+    setDialogError('');
     setEditedCaption(photo.caption);
     setEditing(photo);
   }
@@ -385,6 +421,7 @@ export default function AdminGallery() {
     if (!caption) return;
     setBusy(true);
     setErrors([]);
+    setDialogError('');
     try {
       const { error } = await supabase.from('gallery_photos').update({ caption }).eq('id', editing.id);
       if (error) throw error;
@@ -392,7 +429,9 @@ export default function AdminGallery() {
       await loadGallery();
       setMessage('Fotoğraf adı güncellendi ve ana siteye yansıtıldı.');
     } catch (error) {
-      setErrors([errorMessage(error, 'Fotoğraf adı güncellenemedi.')]);
+      const detail = errorMessage(error, 'Fotoğraf adı güncellenemedi.');
+      setErrors([detail]);
+      setDialogError(detail);
     } finally {
       setBusy(false);
     }
@@ -461,14 +500,15 @@ export default function AdminGallery() {
             <div className="ag-section-heading"><div><h2 id="ag-category-title">{category.title}</h2><p>{category.photos.length} / {LIMIT} fotoğraf · {LIMIT - category.photos.length} boş yer</p></div></div>
             <div className="ag-upload">
               <h3>2. Fotoğraf ekleyin</h3><p>Birden fazla fotoğraf seçebilirsiniz. Fotoğraflar otomatik küçültülür; oranları korunur.</p>
-              <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={busy || remaining <= 0} onChange={event => { void prepare(event.currentTarget.files); event.currentTarget.value = ''; }} />
-              <button className="ag-upload-button" type="button" disabled={busy || remaining <= 0} onClick={() => fileInput.current?.click()}>
+              <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={busy || !galleryLoaded || remaining <= 0} onChange={event => { void prepare(event.currentTarget.files); event.currentTarget.value = ''; }} />
+              <button className="ag-upload-button" type="button" disabled={busy || !galleryLoaded || remaining <= 0} onClick={() => fileInput.current?.click()}>
                 {busy ? <Loader2 className="ag-spin" size={26} /> : <ImagePlus size={28} />}
                 <strong>{busy ? 'Fotoğraflar hazırlanıyor…' : remaining <= 0 ? 'Fotoğraf sınırına ulaşıldı' : 'Telefondan veya bilgisayardan fotoğraf seç'}</strong>
                 <span>JPG, PNG, WebP · Dosya başına en fazla 20 MB</span>
               </button>
               <p className="ag-hint">Hazırlanan görseller: uzun kenar en fazla 1600 piksel, dosya en fazla 500 KB.</p>
               {errors.length > 0 && <div className="ag-errors" role="alert">{errors.map((error, index) => <p key={index}>{error}</p>)}</div>}
+              {!galleryLoaded && !busy && <button className="ag-primary" type="button" onClick={() => void retryGallery()}>Galeriyi yeniden yükle</button>}
               {pending.length > 0 && <div className="ag-pending">
                 <h4>Seçilen fotoğraflar ({pending.length})</h4>
                 <div className="ag-pending-grid">{pending.map(photo => <div key={photo.id} className="ag-pending-photo">
@@ -491,10 +531,10 @@ export default function AdminGallery() {
               <div className="ag-photo-body"><p title={photo.caption}>{photo.caption || `Fotoğraf ${index + 1}`}</p>
                 <div className="ag-photo-actions"><button type="button" disabled={busy} onClick={() => openCaptionEditor(photo)}><Pencil size={15} /> Adını düzenle</button>
                 <button type="button" disabled={busy || photo.id === category.coverId} onClick={() => void setCover(photo)}><Star size={15} />{photo.id === category.coverId ? 'Kapak' : 'Kapak yap'}</button>
-                <button type="button" className="ag-remove" disabled={busy} onClick={() => setRemoving(photo)}><Trash2 size={15} /> Kaldır</button></div>
+                <button type="button" className="ag-remove" disabled={busy} onClick={() => { setDialogError(''); setRemoving(photo); }}><Trash2 size={15} /> Kaldır</button></div>
               </div>
             </article>)}</div>
-            {category.photos.length === 0 && <div className="ag-empty"><Images size={36} /><h3>Bu kategoride henüz fotoğraf yok</h3><p>Yukarıdaki düğmeden ilk fotoğrafı ekleyin.</p></div>}
+            {galleryLoaded && category.photos.length === 0 && <div className="ag-empty"><Images size={36} /><h3>Bu kategoride henüz fotoğraf yok</h3><p>Yukarıdaki düğmeden ilk fotoğrafı ekleyin.</p></div>}
           </section>
         </div>
       </main>
@@ -503,6 +543,7 @@ export default function AdminGallery() {
           {removing ? <><h2 id="ag-dialog-title">Fotoğraf kaldırılsın mı?</h2><p>“{removing.caption}” seçili kategoriden ve ana siteden kaldırılacak.</p><p>Kategori kapağıysa kalan ilk fotoğraf kapak olur.</p><div className="ag-dialog-actions"><button ref={removeCancel} type="button" onClick={() => setRemoving(null)}>Vazgeç</button><button className="ag-danger" type="button" disabled={busy} onClick={() => void removePhoto()}>{busy ? 'Kaldırılıyor…' : 'Evet, kaldır'}</button></div></>
           : editing ? <form className="ag-edit-form" onSubmit={updateCaption}><h2 id="ag-dialog-title">Fotoğraf adını düzenle</h2><p>Bu ad fotoğrafın altında ana sitede de görünecek.</p><label htmlFor="ag-photo-name">Fotoğraf adı</label><input id="ag-photo-name" type="text" maxLength={80} value={editedCaption} onChange={event => setEditedCaption(event.target.value)} disabled={busy} autoFocus required /><small>{editedCaption.trim().length} / 80 karakter</small><div className="ag-dialog-actions"><button ref={removeCancel} type="button" onClick={() => setEditing(null)}>Vazgeç</button><button className="ag-save" type="submit" disabled={busy || !editedCaption.trim()}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button></div></form>
           : preview && <><div className="ag-preview-heading"><h2 id="ag-dialog-title">Fotoğraf önizlemesi</h2><button ref={removeCancel} type="button" aria-label="Önizlemeyi kapat" onClick={() => setPreview(null)}><X size={22} /></button></div><img src={preview.src} alt={preview.caption} /><p>{preview.caption}</p></>}
+          {dialogError && <p className="ag-errors" role="alert">{dialogError}</p>}
         </div>
       </div>}
     </div>

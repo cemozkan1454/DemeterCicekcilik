@@ -20,7 +20,7 @@ export default function Gallery() {
     if (!supabaseConfigured) return;
     let active = true;
     fetchGalleryRows().then(rows => {
-      if (active && rows.length > 0) setCategories(rowsToCategories(rows));
+      if (active) setCategories(rowsToCategories(rows));
     }).catch(() => {
       // Statik galeri bağlantı sorunu olduğunda görünmeye devam eder.
     });
