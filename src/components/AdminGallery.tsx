@@ -186,7 +186,7 @@ export default function AdminGallery() {
       const { error } = await supabase.auth.signInWithPassword({ email: username.trim(), password });
       if (error) {
         if (error.code === 'invalid_credentials') {
-          setLoginError('E-posta veya şifre bu Supabase projesindeki hesapla eşleşmiyor.');
+          setLoginError('E-posta veya şifre hatalı. Bilgilerinizi kontrol edip tekrar deneyin.');
         } else if (error.code === 'email_not_confirmed') {
           setLoginError('Hesabın e-posta adresi henüz doğrulanmamış.');
         } else if (!error.status || error.name === 'AuthRetryableFetchError') {
