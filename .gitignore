@@ -21,3 +21,14 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Local environment settings (keep the documented template)
+.env.*
+!.env.example
+
+# Editor-generation metadata
+.bolt/
+
+# Local design experiments, not used by the website
+/public/images/celenk-white/celenk-test-krem-golge.png
+/public/images/celenk-white/celenk-test-yazisiz.png
